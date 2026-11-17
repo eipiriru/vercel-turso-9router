@@ -5,7 +5,8 @@
 // to bump only skips that backup — it does NOT break the additive auto-sync.
 export const SCHEMA_VERSION = 2;
 
-export const PRAGMA_SQL = `
+// Local engine PRAGMAs (for SQLite file-based drivers)
+export const LOCAL_PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA temp_store = MEMORY;
@@ -14,6 +15,13 @@ PRAGMA cache_size = -64000;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 `;
+
+// Portable PRAGMAs safe for both remote/libSQL and local drivers
+export const PORTABLE_PRAGMA_SQL = [
+  "PRAGMA foreign_keys = ON;",
+];
+
+export const PRAGMA_SQL = LOCAL_PRAGMA_SQL;
 
 // Declarative current schema. Used by syncSchemaFromTables() to
 // auto-add missing tables/columns/indexes after versioned migrations.

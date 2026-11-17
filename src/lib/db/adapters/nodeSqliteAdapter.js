@@ -1,6 +1,6 @@
 // Built-in node:sqlite adapter — available in Node >= 22.5.0.
 // No native build, no npm install. API mirrors betterSqliteAdapter.
-import { PRAGMA_SQL } from "../schema.js";
+import { LOCAL_PRAGMA_SQL } from "../schema.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -20,7 +20,7 @@ export async function createNodeSqliteAdapter(filePath) {
   const Database = sqlite.DatabaseSync;
   const db = new Database(filePath);
 
-  db.exec(PRAGMA_SQL);
+  db.exec(LOCAL_PRAGMA_SQL);
 
   const stmtCache = new Map();
   function prepare(sql) {

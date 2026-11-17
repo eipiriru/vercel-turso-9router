@@ -1,16 +1,31 @@
 import { ensureDirs, DATA_FILE } from "./paths.js";
 import { stripNullBytes } from "./helpers/nullBytes.js";
+import { wrapSyncAdapter } from "./helpers/asyncAdapter.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false };
 const state = global._dbAdapter;
+
+function hasTursoConfig() {
+  return Boolean(process.env.KUMO_DB_TURSO_DATABASE_URL || process.env.KUMO_DB_TURSO_AUTH_TOKEN);
+}
+
+async function tryTurso() {
+  if (!hasTursoConfig()) return null;
+  const { createTursoLibsqlAdapter } = await import("./adapters/tursoLibsqlAdapter.js");
+  return createTursoLibsqlAdapter(
+    process.env.KUMO_DB_TURSO_DATABASE_URL,
+    process.env.KUMO_DB_TURSO_AUTH_TOKEN,
+  );
+}
 
 async function tryBunSqlite() {
   // Bun runtime only — built-in, no install needed
   if (!process.versions.bun) return null;
   try {
     const { createBunSqliteAdapter } = await import("./adapters/bunSqliteAdapter.js");
-    return await createBunSqliteAdapter(DATA_FILE);
+    const raw = await createBunSqliteAdapter(DATA_FILE);
+    return raw ? wrapSyncAdapter(raw) : null;
   } catch (e) {
     console.warn(`[DB] bun:sqlite unavailable: ${e.message}`);
     return null;
@@ -26,7 +41,8 @@ async function tryBetterSqlite() {
   if (nodeMajor >= 24) return null;
   try {
     const { createBetterSqliteAdapter } = await import("./adapters/betterSqliteAdapter.js");
-    return createBetterSqliteAdapter(DATA_FILE);
+    const raw = createBetterSqliteAdapter(DATA_FILE);
+    return raw ? wrapSyncAdapter(raw) : null;
   } catch (e) {
     console.warn(`[DB] better-sqlite3 unavailable: ${e.message}`);
     return null;
@@ -40,7 +56,8 @@ async function tryNodeSqlite() {
   if (maj < 22 || (maj === 22 && min < 5)) return null;
   try {
     const { createNodeSqliteAdapter } = await import("./adapters/nodeSqliteAdapter.js");
-    return await createNodeSqliteAdapter(DATA_FILE);
+    const raw = await createNodeSqliteAdapter(DATA_FILE);
+    return raw ? wrapSyncAdapter(raw) : null;
   } catch (e) {
     console.warn(`[DB] node:sqlite unavailable: ${e.message}`);
     return null;
@@ -50,7 +67,8 @@ async function tryNodeSqlite() {
 async function trySqlJs() {
   try {
     const { createSqlJsAdapter } = await import("./adapters/sqljsAdapter.js");
-    return await createSqlJsAdapter(DATA_FILE);
+    const raw = await createSqlJsAdapter(DATA_FILE);
+    return raw ? wrapSyncAdapter(raw) : null;
   } catch (e) {
     console.warn(`[DB] sql.js unavailable: ${e.message}`);
     return null;
@@ -78,10 +96,23 @@ function withNullByteSafeParams(adapter) {
     run: (sql, params = []) => adapter.run(sql, clean(params)),
     get: (sql, params = []) => adapter.get(sql, clean(params)),
     all: (sql, params = []) => adapter.all(sql, clean(params)),
+    exec: (sql) => adapter.exec(sql),
+    transaction: adapter.transaction ? (fn) => adapter.transaction((tx) => fn(withNullByteSafeParams(tx))) : undefined,
   };
 }
 
 async function initAdapter() {
+  if (hasTursoConfig()) {
+    const adapter = withNullByteSafeParams(await tryTurso());
+    if (!state.logged) {
+      console.log(`[DB] Driver: ${adapter.driver} | remote: Turso`);
+      state.logged = true;
+    }
+    const { runMigrationOnce } = await import("./migrate.js");
+    await runMigrationOnce(adapter);
+    return adapter;
+  }
+
   ensureDirs();
   // Order per runtime:
   //   Bun:  bun:sqlite → sql.js

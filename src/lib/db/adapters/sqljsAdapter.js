@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import initSqlJs from "sql.js";
-import { PRAGMA_SQL } from "../schema.js";
+import { LOCAL_PRAGMA_SQL } from "../schema.js";
 
 let SQL = null;
 
@@ -14,7 +14,7 @@ export async function createSqlJsAdapter(filePath) {
   const SQLLib = await loadSql();
   const buf = fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
   const db = new SQLLib.Database(buf);
-  db.exec(PRAGMA_SQL);
+  db.exec(LOCAL_PRAGMA_SQL);
   // Schema is created/synced by migrate.js after adapter init
 
   let dirty = false;
