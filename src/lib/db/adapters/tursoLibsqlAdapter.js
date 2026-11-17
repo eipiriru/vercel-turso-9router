@@ -80,7 +80,11 @@ export async function createTursoLibsqlAdapter(url, authToken) {
         if (!committed) await tx.rollback().catch(() => {});
         throw error;
       } finally {
-        await tx.close().catch(() => {});
+        try {
+          await tx.close();
+        } catch {
+          // Cleanup must not mask callback, commit, or rollback errors.
+        }
       }
     },
     async close() {
